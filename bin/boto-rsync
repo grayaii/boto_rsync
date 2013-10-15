@@ -94,8 +94,11 @@ def spinner(event, every):
 
 def submit_cb(bytes_so_far, total_bytes):
     """The "progress" callback for file transfers."""
-    global speeds
-    
+    global speeds, disable_progress
+    if disable_progress is True:
+        # Since this function is a call back AND being explicitly called,
+        # can just return without doing anything.
+        return    
     # Setup speed calculation
     if bytes_so_far < 1:
         speeds = []
@@ -172,7 +175,7 @@ def signal_handler(signum, frame):
         sys.exit(0)
 
 def main():
-    global speeds, ev
+    global speeds, ev, disable_progress
     
     signal.signal(signal.SIGINT, signal_handler)
     ev = None
@@ -297,6 +300,10 @@ def main():
         version=version % dict(prog=parser.prog, version=__version__)
         )
     parser.add_argument(
+        '--no-progress', action='store_true', dest='disable_progress',
+        help='Disables the progress text for file transfers.'
+    )
+    parser.add_argument(
         '-h', '--help', action='help',
         help='show this help message and exit'
         )
@@ -331,6 +338,7 @@ def main():
         debug = args.debug
         source = args.SOURCE
         dest = args.DESTINATION
+        disable_progress = args.disable_progress
     except:
         sys.stdout.write('\nERROR: Improperly formatted arguments.\n\n')
         usage(parser)
@@ -417,9 +425,13 @@ def main():
         if anon:
             c = boto.connect_s3(host=endpoint, anon=True)
         else:
-            c = boto.connect_s3(aws_access_key_id=cloud_access_key_id,
-                                aws_secret_access_key=cloud_secret_access_key,
-                                host=endpoint)
+            #- If your keys are in your environment, use them:
+            if 'AWS_ACCESS_KEY' in os.environ and 'AWS_SECRET_KEY' in os.environ:
+                c = boto.connect_s3(aws_access_key_id=os.environ['AWS_ACCESS_KEY'],
+                                            aws_secret_access_key=os.environ['AWS_SECRET_KEY'])
+            else:
+                #- Perhaps your IAM role allows you access:
+                c = boto.connect_s3(host=endpoint)
     c.debug = debug
     b = c.get_bucket(cloud_bucket)
     if xfer_type in ['sync']:
@@ -532,7 +544,8 @@ def main():
                             keys[key_name] = 0
                             
                             # Clean stdout
-                            sys.stdout.write('\n')
+                            if not disable_progress:
+                                sys.stdout.write('\n')
                 
                 for file in files:
                     if glob and not fnmatch(file, glob):
@@ -592,7 +605,8 @@ def main():
                         keys[key_name] = file_size
                         
                         # Clean stdout
-                        sys.stdout.write('\n')
+                        if not disable_progress:
+                            sys.stdout.write('\n')
             
             # If specified, perform deletes
             if delete:
@@ -700,7 +714,8 @@ def main():
                             )
                     
                     # Clean stdout
-                    sys.stdout.write('\n')
+                    if not disable_progress:
+                        sys.stdout.write('\n')
     
     elif xfer_type == 'download':
         # Perform cloud "download"
@@ -797,7 +812,8 @@ def main():
                     key.get_contents_to_filename(fullpath, cb=cb, num_cb=num_cb)
                     
                     # Clean stdout
-                    sys.stdout.write('\n')
+                    if not disable_progress:
+                        sys.stdout.write('\n')
         
         else:
             # Possible multi file download
@@ -885,7 +901,8 @@ def main():
                                                      num_cb=num_cb)
                     
                     # Clean stdout
-                    sys.stdout.write('\n')
+                    if not disable_progress:
+                        sys.stdout.write('\n')
             
             # If specified, perform deletes
             if delete:
@@ -1035,7 +1052,8 @@ def main():
                     sys.stdout.flush()
                 
                 # Clean stdout
-                sys.stdout.write('\n')
+                if not disable_progress:
+                    sys.stdout.write('\n')
         
         else:
             # Possible multi file sync
